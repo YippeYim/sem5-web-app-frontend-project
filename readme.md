@@ -2,7 +2,7 @@
 
 ยินดีต้อนรับสู่แอปพลิเคชัน **Drone Console Frontend**! แอปพลิเคชันนี้ถูกออกแบบมาเพื่อเป็นหน้าต่างสำหรับตรวจสอบสถานะและบันทึกข้อมูลอุณหภูมิของโดรนที่กำหนดผ่าน Backend API Server
 
-> ท่านสามารถเข้าถึงได้ที่เว็ป https://yippeyim.github.io/sem5-web-app-frontend-project/?drone_id=66010497&api_base_url=https://sem5-web-app-server-project.onrender.com/
+> ท่านสามารถเข้าถึงได้ที่เว็ป https://yippeyim.github.io/sem5-web-app-frontend-project/?drone_id=66010497&api_base_url=https://sem5-web-app-server-project.onrender.com
 
 ---
 
@@ -42,3 +42,4 @@
 สมมติว่า URL เว็บไซต์ของคุณคือ `https://[username].github.io/[repo-name]/`
 
 **เปลี่ยนเฉพาะ Drone ID:**
+
