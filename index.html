@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assignment #2: Drone Console (Styled)</title>
+    <!-- Load Tailwind CSS CDN for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* กำหนด Font Inter และพื้นฐานสำหรับ Body */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f7f9;
+        }
+        /* Style สำหรับตารางที่ดูดีขึ้น */
+        .log-table th, .log-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .log-table th {
+            background-color: #e5e7eb;
+            font-weight: 600;
+        }
+        .log-table tr:hover {
+            background-color: #f3f4f6;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 sm:p-8">
+    <div id="app" class="max-w-4xl mx-auto bg-white shadow-xl rounded-xl p-6 sm:p-10">
+        <h1 class="text-3xl font-extrabold text-indigo-700 mb-6 border-b pb-3">
+            Drone Console - Assignment #2
+        </h1>
+        
+        <!-- Navigation -->
+        <nav class="flex space-x-2 sm:space-x-4 mb-8">
+            <button onclick="changePage('config')" 
+                    class="nav-btn bg-indigo-500 hover:bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 shadow-md">
+                View Config (#1)
+            </button>
+            <button onclick="changePage('log-form')" 
+                    class="nav-btn bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 shadow-md">
+                Log Temperature (#2)
+            </button>
+            <button onclick="changePage('logs')" 
+                    class="nav-btn bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg transition duration-150 shadow-md">
+                View Logs (#3)
+            </button>
+        </nav>
+        
+        <!-- Content Area -->
+        <div id="page-content">
+            <h2 class="text-xl text-gray-500">Loading...</h2>
+        </div>
+        
+        <!-- API Status Display for debugging -->
+        <div class="mt-8 text-sm text-gray-500 border-t pt-4">
+            <h3 class="font-bold text-gray-700 mb-2">Configuration Status:</h3>
+            <p>Current Drone ID (URL/Build): <span id="current-drone-id" class="font-mono text-indigo-600"></span></p>
+            <p>Current API URL (URL/Build): <span id="current-api-url" class="font-mono text-green-600"></span></p>
+            <p class="text-xs mt-1 text-gray-400">
+                Variables set during GitHub Actions build. Can be overridden via URL parameters: 
+                <code>?drone_id=XXX&api_base_url=YYY</code>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Environment Variables และ Global State ---
+        
+        // ฟังก์ชันสำหรับกำหนดและโหลด Environment Config (รองรับ Build-Time Replacement)
+        function getEnvironmentConfig() {
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            // NOTE: ค่าเหล่านี้คือ Placeholder ที่จะถูกแทนที่โดย GitHub Actions Script
+            // ถ้าค่าถูกแทนที่แล้ว จะถูกใช้เป็นค่า Default ในโค้ด
+            const ENVIRONMENT_DEFAULTS = {
+                //  จะถูกแทนที่ด้วยค่าจาก GitHub Environment Variable ในขั้นตอน Build
+                DRONE_ID: "", 
+                //  จะถูกแทนที่ด้วยค่าจาก GitHub Environment Variable ในขั้นตอน Build
+                API_BASE_URL: "",
+                LIMIT: 12
+            };
+
+            // ตรวจสอบค่าที่ถูกแทนที่ หากยังคงเป็น Placeholder ให้ใช้ค่า Hardcoded ที่สมบูรณ์
+            const BUILT_DRONE_ID = ENVIRONMENT_DEFAULTS.DRONE_ID.startsWith('##') ? "none" : ENVIRONMENT_DEFAULTS.DRONE_ID;
+            const BUILT_API_BASE_URL = ENVIRONMENT_DEFAULTS.API_BASE_URL.startsWith('##') ? "none" : ENVIRONMENT_DEFAULTS.API_BASE_URL;
+
+            // ตรรกะ: ใช้ URL Parameter > ใช้ค่าที่ถูก Build-Time Replace > ใช้ค่า Hardcoded
+            const DRONE_ID = urlParams.get('drone_id') || BUILT_DRONE_ID; 
+            const API_BASE_URL = urlParams.get('api_base_url') || BUILT_API_BASE_URL; 
+            
+            return { 
+                DRONE_ID, 
+                API_BASE_URL, 
+                LIMIT: ENVIRONMENT_DEFAULTS.LIMIT 
+            };
+        }
+
+        const ENV = getEnvironmentConfig();
+        const DRONE_ID = ENV.DRONE_ID;
+        const API_BASE_URL = ENV.API_BASE_URL;
+        const LIMIT = ENV.LIMIT;
+        
+        let droneConfig = null;
+
+        // --- 2. API Helper Functions (โค้ดส่วนนี้ยังคงเดิม) ---
+        
+        /**
+         * ดึงข้อมูล Config ของ Drone
+         */
+        async function fetchConfig() {
+            try {
+                const url = `${API_BASE_URL}/config/${DRONE_ID}`;
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`API Error: ${res.status}`);
+                return res.json();
+            } catch (error) {
+                console.error("Error fetching config:", error);
+                document.getElementById('page-content').innerHTML = `
+                    <div class="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                        <p class="font-bold">❌ ERROR: Cannot load Config for Drone ID ${DRONE_ID}.</p>
+                        <p class="text-sm">Details: ${error.message}</p>
+                    </div>
+                `;
+                return null;
+            }
+        }
+        
+        /**
+         * ส่ง Log อุณหภูมิในรูปแบบ JSON Body (แก้ไขให้ส่งข้อมูลถูกต้อง)
+         */
+        async function postLog(logData) {
+            // 1. ตรวจสอบความถูกต้องของข้อมูล (Client-side Check)
+            if (!logData || typeof logData.celsius !== 'number' || !logData.drone_id) {
+                console.error("Client Error: LogData is invalid or incomplete.", logData);
+                throw new Error("Invalid or incomplete log data provided.");
+            }
+
+            const url = `${API_BASE_URL}/logs`;
+            const payload = JSON.stringify(logData);
+            
+            // Log ข้อมูลที่กำลังจะถูกส่งไป (ตรวจสอบใน Console)
+            console.log("POST /logs Payload:", payload);
+
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    // ต้องระบุ Content-Type เพื่อให้ Server อ่าน Body ได้
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload, 
+                });
+                
+                // 2. ตรวจสอบ Response Status Code ที่ละเอียดขึ้น
+                if (!res.ok) {
+                    const status = res.status;
+                    let errorMessage = `Failed to post log. Status: ${status}`;
+
+                    if (status >= 400 && status < 500) {
+                        const errorBody = await res.json().catch(() => ({ message: 'No detailed error message from server.' }));
+                        errorMessage += `. Message: ${errorBody.message}`;
+                    } else if (status >= 500) {
+                         errorMessage += `. Server Error (5xx).`;
+                    }
+                    
+                    console.error("Fetch Error Details:", errorMessage, res);
+                    throw new Error(errorMessage);
+                }
+                
+                // Log เมื่อสำเร็จ
+                const result = await res.json();
+                console.log("Log successfully created:", result);
+                return result;
+
+            } catch (error) {
+                console.error("Network or Unexpected Error:", error.message);
+                throw error;
+            }
+        }
+
+        /**
+         * ดึงรายการ Log
+         */
+        async function fetchLogs(page = 1) {
+            const offset = (page - 1) * LIMIT;
+            // API Path: logs หรือ log? (เปลี่ยนจาก /log เป็น /logs เพื่อให้สอดคล้องกับมาตรฐาน)
+            const url = `${API_BASE_URL}/logs/${DRONE_ID}?limit=${LIMIT}&offset=${offset}&sort=created_at:desc`; 
+
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`API Error: ${res.status}`);
+            return res.json();
+        }
+
+        // --- 3. Page Rendering Functions (โค้ดส่วนนี้ยังคงเดิม) ---
+
+        /**
+         * Page #1: View Config
+         */
+        async function renderConfigPage() {
+            const content = document.getElementById('page-content');
+            content.innerHTML = '<h2 class="text-2xl font-semibold mb-4">Page #1: View Config</h2><p class="text-gray-500">Fetching drone configuration...</p>';
+            
+            droneConfig = await fetchConfig(); // ดึงข้อมูล Config
+            
+            if (droneConfig) {
+                // แสดงข้อมูล Config
+                content.innerHTML = `
+                    <h2 class="text-2xl font-semibold mb-4 text-indigo-700">Page #1: View Config</h2>
+                    <div class="space-y-3 p-4 bg-gray-50 rounded-lg border">
+                        <p><b class="font-medium text-gray-600 w-32 inline-block">Drone ID:</b> <span class="text-indigo-600">${droneConfig.drone_id}</span></p>
+                        <p><b class="font-medium text-gray-600 w-32 inline-block">Drone Name:</b> ${droneConfig.drone_name}</p>
+                        <p><b class="font-medium text-gray-600 w-32 inline-block">Light:</b> 
+                            <span class="${droneConfig.light ? 'text-green-500 font-bold' : 'text-red-500 font-bold'}">
+                                ${droneConfig.light ? 'ON' : 'OFF'}
+                            </span>
+                        </p>
+                        <p><b class="font-medium text-gray-600 w-32 inline-block">Country:</b> ${droneConfig.country}</p>
+                    </div>
+                `;
+            }
+        }
+
+        /**
+         * Page #2: Temperature Log Form
+         */
+        function renderLogFormPage() {
+            const content = document.getElementById('page-content');
+            
+            if (!droneConfig) {
+                content.innerHTML = `
+                    <h2 class="text-2xl font-semibold mb-4">Page #2: Log Form</h2>
+                    <p class="p-3 bg-red-100 text-red-700 rounded-lg">ERROR: Config not loaded. Please go to View Config first.</p>
+                `;
+                return;
+            }
+            
+            content.innerHTML = `
+                <h2 class="text-2xl font-semibold mb-6 text-green-700">Page #2: Temperature Log Form</h2>
+                <div class="mb-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                    <p class="text-gray-700">Logging data for: <b>${droneConfig.drone_name}</b> (${droneConfig.country})</p>
+                </div>
+                <form id="log-form" class="space-y-4">
+                    <div class="flex flex-col">
+                        <label for="celsius" class="text-gray-700 font-medium mb-1">Temperature in Celsius (°C):</label>
+                        <input type="number" id="celsius" step="0.01" required 
+                               class="p-2 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500">
+                    </div>
+                    <button type="submit" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg transition duration-150 shadow-md">
+                        Submit Data
+                    </button>
+                </form>
+                <p id="form-message" class="mt-4 p-2 text-center rounded-lg"></p>
+            `;
+
+            // เพิ่ม Event Listener ให้ Form
+            document.getElementById('log-form').addEventListener('submit', handleLogSubmit);
+        }
+
+        async function handleLogSubmit(event) {
+            event.preventDefault();
+            const messageEl = document.getElementById('form-message');
+            messageEl.textContent = 'Submitting...';
+            messageEl.className = 'mt-4 p-2 text-center rounded-lg bg-blue-100 text-blue-700';
+
+            const celsiusInput = document.getElementById('celsius');
+            // *** FIX: ใช้ parseFloat เพื่อรองรับทศนิยม ***
+            const celsius = parseFloat(celsiusInput.value); 
+
+            if (isNaN(celsius)) {
+                messageEl.textContent = 'Please enter a valid number.';
+                messageEl.className = 'mt-4 p-2 text-center rounded-lg bg-red-100 text-red-700';
+                return;
+            }
+
+            const logData = {
+                drone_id: droneConfig.drone_id,
+                drone_name: droneConfig.drone_name,
+                country: droneConfig.country,
+                celsius: celsius,
+            };
+
+            try {
+                await postLog(logData);
+                messageEl.textContent = '✅ Log Submitted Successfully! Checking Console for details.';
+                messageEl.className = 'mt-4 p-2 text-center rounded-lg bg-green-100 text-green-700';
+                document.getElementById('log-form').reset(); // ล้างฟอร์ม
+            } catch (error) {
+                console.error("Submission Error:", error);
+                messageEl.textContent = `❌ Submission Failed: ${error.message}`;
+                messageEl.className = 'mt-4 p-2 text-center rounded-lg bg-red-100 text-red-700';
+            }
+        }
+
+        /**
+         * Page #3: View Logs
+         */
+        function renderLogsPage(page = 1) {
+            const content = document.getElementById('page-content');
+            content.innerHTML = `
+                <h2 class="text-2xl font-semibold mb-6 text-gray-700">Page #3: View Logs (Drone ID: ${DRONE_ID})</h2>
+                <div id="log-table-area" class="overflow-x-auto"><p class="text-gray-500">Loading logs...</p></div>
+                <div id="pagination-controls" class="flex justify-center mt-6"></div>
+            `;
+            loadLogsTable(page);
+        }
+
+        async function loadLogsTable(page) {
+            const tableArea = document.getElementById('log-table-area');
+            const paginationArea = document.getElementById('pagination-controls');
+            tableArea.innerHTML = '<p class="text-gray-500">Loading logs...</p>';
+            paginationArea.innerHTML = '';
+            
+            try {
+                const logsWithCheck = await fetchLogs(page); 
+                
+                const logs = logsWithCheck.slice(0, LIMIT);
+                const hasNext = logsWithCheck.length > LIMIT;
+                
+                if (logs.length === 0 && page === 1) {
+                    tableArea.innerHTML = '<p class="text-gray-500">No log records found for this drone.</p>';
+                    return;
+                }
+                
+                // สร้างตารางด้วย Tailwind classes
+                let tableHTML = `
+                    <table class="log-table min-w-full bg-white rounded-lg overflow-hidden shadow">
+                        <thead>
+                            <tr>
+                                <th>Created</th>
+                                <th>Country</th>
+                                <th>Drone ID</th>
+                                <th>Drone Name</th>
+                                <th>Celsius</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                logs.forEach(log => {
+                    // ใช้ toLocaleString() เพื่อจัดรูปแบบวันที่ให้คนอ่านง่าย
+                    const createdTime = new Date(log.created).toLocaleString('th-TH', { 
+                        year: 'numeric', month: 'short', day: 'numeric', 
+                        hour: '2-digit', minute: '2-digit', second: '2-digit'
+                    });
+                    tableHTML += `
+                        <tr class="text-gray-700">
+                            <td class="whitespace-nowrap">${createdTime}</td>
+                            <td>${log.country}</td>
+                            <td>${log.drone_id}</td>
+                            <td>${log.drone_name}</td>
+                            <td class="font-bold">${log.celsius}°C</td>
+                        </tr>
+                    `;
+                });
+
+                tableHTML += `</tbody></table>`;
+                tableArea.innerHTML = tableHTML;
+                
+                // สร้าง Pagination
+                paginationArea.innerHTML = `
+                    <div class="flex space-x-4">
+                        <button 
+                            onclick="renderLogsPage(${page - 1})" 
+                            ${page === 1 ? 'disabled' : ''}
+                            class="px-4 py-2 border rounded-lg transition duration-150 
+                                ${page === 1 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300'}">
+                            &larr; Previous
+                        </button>
+                        <span class="flex items-center text-gray-700 font-medium"> Page ${page} </span>
+                        <button 
+                            onclick="renderLogsPage(${page + 1})" 
+                            ${!hasNext ? 'disabled' : ''}
+                            class="px-4 py-2 border rounded-lg transition duration-150 
+                                ${!hasNext ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-200 hover:bg-gray-300'}">
+                            Next &rarr;
+                        </button>
+                    </div>
+                `;
+
+            } catch (error) {
+                tableArea.innerHTML = `
+                    <div class="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+                        <p class="font-bold">❌ ERROR: Failed to load logs.</p>
+                        <p class="text-sm">Details: ${error.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        // --- 4. Routing Logic (โค้ดส่วนนี้ยังคงเดิม) ---
+
+        function changePage(pageName) {
+            switch (pageName) {
+                case 'config':
+                    renderConfigPage();
+                    break;
+                case 'log-form':
+                    renderLogFormPage();
+                    break;
+                case 'logs':
+                    renderLogsPage(1); // เริ่มที่หน้า 1 เสมอเมื่อเปลี่ยนหน้า
+                    break;
+                default:
+                    renderConfigPage();
+            }
+        }
+        
+        // --- 5. Initialization (โค้ดส่วนนี้ยังคงเดิม) ---
+
+        function updateStatusDisplay() {
+            document.getElementById('current-drone-id').textContent = DRONE_ID;
+            document.getElementById('current-api-url').textContent = API_BASE_URL;
+        }
+
+        // เริ่มต้น Application เมื่อโหลดหน้าเว็บเสร็จ
+        window.onload = () => {
+            // โหลด Inter Font
+            const link = document.createElement('link');
+            link.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap';
+            link.rel = 'stylesheet';
+            document.head.appendChild(link);
+            
+            updateStatusDisplay(); // แสดงค่าตัวแปรที่ใช้
+            changePage('config');
+        };
+
+    </script>
+</body>
+</html>
