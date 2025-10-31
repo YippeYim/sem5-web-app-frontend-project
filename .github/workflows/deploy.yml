@@ -16,10 +16,11 @@ jobs:
       id-token: write # จำเป็นสำหรับการใช้งาน OIDC เพื่อการ Deploy ที่ทันสมัย
     # *** END ADDED ***
     
-    # ดึงค่า Environment Variables จาก Environment ที่เชื่อมโยงกับ Actions
+    # ดึงค่า Environment Variables จาก Secrets หรือ Variables
     env:
-      BUILD_DRONE_ID: ${{ vars.DRONE_ID }}
-      BUILD_API_BASE_URL: ${{ vars.API_BASE_URL }}
+      # ลองดึงจาก SECRETS ก่อน หากไม่มีค่า ให้ดึงจาก VARS
+      BUILD_DRONE_ID: ${{ secrets.DRONE_ID || vars.DRONE_ID }}
+      BUILD_API_BASE_URL: ${{ secrets.API_BASE_URL || vars.API_BASE_URL }}
       
     steps:
       - name: Checkout repository
@@ -32,15 +33,13 @@ jobs:
 
       - name: Perform Build-Time Variable Replacement
         run: |
-          # ตรวจสอบว่ามีค่า Environment Variable อยู่หรือไม่ ก่อนดำเนินการแทนที่
-          
-          # แทนที่ DRONE_ID Placeholder
+          # แทนที่ DRONE_ID Placeholder (ไม่มี Single Quote เพื่อให้เป็น Integer)
           # sed -i 's/ข้อความที่ต้องการหา/ข้อความที่ต้องการแทนที่/g' ชื่อไฟล์
           sed -i "s|##DRONE_ID_PLACEHOLDER##|$BUILD_DRONE_ID|g" index.html
           
-          # แทนที่ API_BASE_URL Placeholder
+          # แทนที่ API_BASE_URL Placeholder (ยังคงใช้ Single Quote เพราะเป็น String)
           # ใช้ | เป็น delimiter แทน / เพื่อหลีกเลี่ยงปัญหา URL มีเครื่องหมาย /
-          sed -i "s|##API_BASE_URL_PLACEHOLDER##|$BUILD_API_BASE_URL|g" index.html
+          sed -i "s|##API_BASE_URL_PLACEHOLDER##|'$BUILD_API_BASE_URL'|g" index.html
         
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
