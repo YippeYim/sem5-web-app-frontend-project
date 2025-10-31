@@ -9,6 +9,13 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     
+    # *** ADDED: กำหนดสิทธิ์ให้ GITHUB_TOKEN สำหรับ Job นี้ ***
+    permissions:
+      contents: write # จำเป็นสำหรับการเขียนไฟล์
+      pages: write # จำเป็นสำหรับการจัดการ GitHub Pages
+      id-token: write # จำเป็นสำหรับการใช้งาน OIDC เพื่อการ Deploy ที่ทันสมัย
+    # *** END ADDED ***
+    
     # ดึงค่า Environment Variables จาก Environment ที่เชื่อมโยงกับ Actions
     env:
       BUILD_DRONE_ID: ${{ vars.DRONE_ID }}
