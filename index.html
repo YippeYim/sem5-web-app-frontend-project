@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Assignment #2: Drone Frontend (No CSS)</title>
+    </head>
+<body>
+    <div id="app">
+        <h1>Drone Console - Assignment #2</h1>
+        
+        <nav>
+            <button onclick="changePage('config')">View Config (#1)</button>
+            <button onclick="changePage('log-form')">Log Temperature (#2)</button>
+            <button onclick="changePage('logs')">View Logs (#3)</button>
+        </nav>
+        
+        <hr>
+        
+        <div id="page-content">
+            <h2>Loading...</h2>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. Environment Variables และ Global State ---
+        
+        // **สำคัญ:** เนื่องจากห้ามมี Drone ID ในเนื้อโค้ด และไม่มี .env file ใน HTML เดี่ยวๆ
+        // เราจะกำหนดค่าเหล่านี้ไว้ในตัวแปร JavaScript (เป็นวิธีเดียวที่ทำได้ในบริบทนี้)
+        // **โปรดเปลี่ยนค่าเหล่านี้ให้ตรงกับ API Server ของคุณ**
+        const DRONE_ID = "66010497"; // <--- ต้องใส่ Drone ID ของคุณที่นี่
+        const API_BASE_URL = "https://sem5-web-app-server-project.onrender.com"; // <--- ต้องใส่ URL API ของคุณ
+        
+        let droneConfig = null; // เก็บ Config ที่ดึงมาใช้ร่วมกัน
+        const LIMIT = 12;
+
+        // --- 2. API Helper Functions ---
+        
+        /**
+         * ดึงข้อมูล Config ของ Drone
+         */
+        async function fetchConfig() {
+            try {
+                const url = `${API_BASE_URL}/config/${DRONE_ID}`;
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`API Error: ${res.status}`);
+                return res.json();
+            } catch (error) {
+                console.error("Error fetching config:", error);
+                document.getElementById('page-content').innerHTML = `
+                    <p style="color: red;">❌ ERROR: Cannot load Config for Drone ID ${DRONE_ID}.</p>
+                    <p>Details: ${error.message}</p>
+                `;
+                return null;
+            }
+        }
+        
+        /**
+         * ส่ง Log อุณหภูมิ
+         */
+        async function postLog(logData) {
+            const queryToSend = `?drone_id=${logData.drone_id}&drone_name=${logData.drone_name}&&country=${logData.country}&celsius=${logData.celsius}`;
+
+            const url = `${API_BASE_URL}/logs${queryToSend}`;
+            console.log(queryToSend);
+            const res = await fetch(url, {
+                method: 'POST',
+            });
+            if (!res.ok) {
+                const errorBody = await res.json().catch(() => ({ message: 'Unknown Error' }));
+                throw new Error(`Failed to post log. Status: ${res.status}. Message: ${errorBody.message}`);
+            }
+            return res.json();
+        }
+
+        /**
+         * ดึงรายการ Log
+         */
+        async function fetchLogs(page = 1) {
+            const offset = (page - 1) * LIMIT;
+            // เรียงตาม created ล่าสุดขึ้นก่อน
+            const url = `${API_BASE_URL}/log/${DRONE_ID}?limit=${LIMIT}&offset=${offset}&sort=created_at:desc`; 
+
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`API Error: ${res.status}`);
+            return res.json();
+        }
+
+        // --- 3. Page Rendering Functions ---
+
+        /**
+         * Page #1: View Config
+         */
+        async function renderConfigPage() {
+            const content = document.getElementById('page-content');
+            content.innerHTML = '<h2>Page #1: View Config</h2><p>Fetching drone configuration...</p>';
+            
+            droneConfig = await fetchConfig(); // ดึงข้อมูล Config
+            
+            if (droneConfig) {
+                // แสดงข้อมูล Config
+                content.innerHTML = `
+                    <h2>Page #1: View Config</h2>
+                    <h3>Drone Configuration Details</h3>
+                    <p><b>Drone ID:</b> ${droneConfig.drone_id}</p>
+                    <p><b>Drone Name:</b> ${droneConfig.drone_name}</p>
+                    <p><b>Light:</b> ${droneConfig.light ? 'ON' : 'OFF'}</p>
+                    <p><b>Country:</b> ${droneConfig.country}</p>
+                `;
+            }
+        }
+
+        /**
+         * Page #2: Temperature Log Form
+         */
+        function renderLogFormPage() {
+            const content = document.getElementById('page-content');
+            
+            if (!droneConfig) {
+                content.innerHTML = '<h2>Page #2: Log Form</h2><p style="color: red;">ERROR: Config not loaded. Please go to View Config first.</p>';
+                return;
+            }
+            
+            content.innerHTML = `
+                <h2>Page #2: Temperature Log Form</h2>
+                <p>Logging data for: <b>${droneConfig.drone_name}</b> (${droneConfig.country})</p>
+                <form id="log-form">
+                    <label for="celsius">Temperature in Celsius (°C):</label>
+                    <input type="number" id="celsius" step="0.01" required><br><br>
+                    <button type="submit">Submit Data</button>
+                </form>
+                <p id="form-message"></p>
+            `;
+
+            // เพิ่ม Event Listener ให้ Form
+            document.getElementById('log-form').addEventListener('submit', handleLogSubmit);
+        }
+
+        async function handleLogSubmit(event) {
+            event.preventDefault();
+            const messageEl = document.getElementById('form-message');
+            messageEl.textContent = 'Submitting...';
+            messageEl.style.color = 'blue';
+
+            const celsiusInput = document.getElementById('celsius');
+            const celsius = parseInt(celsiusInput.value);
+
+            if (isNaN(celsius)) {
+                messageEl.textContent = 'Please enter a valid number.';
+                messageEl.style.color = 'red';
+                return;
+            }
+
+            const logData = {
+                drone_id: droneConfig.drone_id,
+                drone_name: droneConfig.drone_name,
+                country: droneConfig.country,
+                celsius: celsius,
+            };
+
+            try {
+                await postLog(logData);
+                messageEl.textContent = '✅ Log Submitted Successfully!';
+                messageEl.style.color = 'green';
+                document.getElementById('log-form').reset(); // ล้างฟอร์ม
+            } catch (error) {
+                console.error("Submission Error:", error);
+                messageEl.textContent = `❌ Submission Failed: ${error.message}`;
+                messageEl.style.color = 'red';
+            }
+        }
+
+        /**
+         * Page #3: View Logs
+         */
+        function renderLogsPage(page = 1) {
+            const content = document.getElementById('page-content');
+            content.innerHTML = `
+                <h2>Page #3: View Logs (Drone ID: ${DRONE_ID})</h2>
+                <div id="log-table-area"><p>Loading logs...</p></div>
+                <div id="pagination-controls"></div>
+            `;
+            loadLogsTable(page);
+        }
+
+        async function loadLogsTable(page) {
+            const tableArea = document.getElementById('log-table-area');
+            const paginationArea = document.getElementById('pagination-controls');
+            tableArea.innerHTML = '<p>Loading logs...</p>';
+            paginationArea.innerHTML = '';
+            
+            try {
+                // ดึงข้อมูลเผื่อ 1 รายการเพื่อเช็คว่ามีหน้าถัดไปหรือไม่ (LIMIT + 1)
+                const logsWithCheck = await fetchLogs(page); 
+                
+                const logs = logsWithCheck.slice(0, LIMIT);
+                const hasNext = logsWithCheck.length > LIMIT;
+                
+                if (logs.length === 0 && page === 1) {
+                    tableArea.innerHTML = '<p>No log records found for this drone.</p>';
+                    return;
+                }
+                
+                // สร้างตาราง
+                let tableHTML = `
+                    <table border="1" style="width: 100%; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background-color: #ccc;">
+                                <th>Created</th>
+                                <th>Country</th>
+                                <th>Drone ID</th>
+                                <th>Drone Name</th>
+                                <th>Celsius</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                logs.forEach(log => {
+                    const createdTime = new Date(log.created).toLocaleString();
+                    tableHTML += `
+                        <tr>
+                            <td>${createdTime}</td>
+                            <td>${log.country}</td>
+                            <td>${log.drone_id}</td>
+                            <td>${log.drone_name}</td>
+                            <td>${log.celsius}</td>
+                        </tr>
+                    `;
+                });
+
+                tableHTML += `</tbody></table>`;
+                tableArea.innerHTML = tableHTML;
+                
+                // สร้าง Pagination
+                paginationArea.innerHTML = `
+                    <div style="margin-top: 20px;">
+                        <button 
+                            onclick="renderLogsPage(${page - 1})" 
+                            ${page === 1 ? 'disabled' : ''}>&larr; Previous</button>
+                        <span> Page ${page} </span>
+                        <button 
+                            onclick="renderLogsPage(${page + 1})" 
+                            ${!hasNext ? 'disabled' : ''}>Next &rarr;</button>
+                    </div>
+                `;
+
+            } catch (error) {
+                tableArea.innerHTML = `<p style="color: red;">❌ ERROR: Failed to load logs. Details: ${error.message}</p>`;
+            }
+        }
+
+        // --- 4. Routing Logic ---
+
+        function changePage(pageName) {
+            switch (pageName) {
+                case 'config':
+                    renderConfigPage();
+                    break;
+                case 'log-form':
+                    renderLogFormPage();
+                    break;
+                case 'logs':
+                    renderLogsPage(1); // เริ่มที่หน้า 1 เสมอเมื่อเปลี่ยนหน้า
+                    break;
+                default:
+                    renderConfigPage();
+            }
+        }
+
+        // เริ่มต้น Application เมื่อโหลดหน้าเว็บเสร็จ
+        window.onload = () => {
+            changePage('config');
+        };
+
+    </script>
+</body>
+</html>
