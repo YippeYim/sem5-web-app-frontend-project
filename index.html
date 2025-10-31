@@ -30,7 +30,7 @@
 <body class="min-h-screen p-4 sm:p-8">
     <div id="app" class="max-w-4xl mx-auto bg-white shadow-xl rounded-xl p-6 sm:p-10">
         <h1 class="text-3xl font-extrabold text-indigo-700 mb-6 border-b pb-3">
-            66010497 Drone Console
+            Drone Console - Assignment #2
         </h1>
         
         <!-- Navigation -->
@@ -53,17 +53,59 @@
         <div id="page-content">
             <h2 class="text-xl text-gray-500">Loading...</h2>
         </div>
+        
+        <!-- API Status Display for debugging -->
+        <div class="mt-8 text-sm text-gray-500 border-t pt-4">
+            <h3 class="font-bold text-gray-700 mb-2">Configuration Status:</h3>
+            <p>Current Drone ID (URL/Build): <span id="current-drone-id" class="font-mono text-indigo-600"></span></p>
+            <p>Current API URL (URL/Build): <span id="current-api-url" class="font-mono text-green-600"></span></p>
+            <p class="text-xs mt-1 text-gray-400">
+                Variables set during GitHub Actions build. Can be overridden via URL parameters: 
+                <code>?drone_id=XXX&api_base_url=YYY</code>
+            </p>
+        </div>
     </div>
 
     <script>
         // --- 1. Environment Variables และ Global State ---
-        const DRONE_ID = "66010497"; // <--- Drone ID ของคุณ
-        const API_BASE_URL = "https://sem5-web-app-server-project.onrender.com"; // <--- URL API ของคุณ
+        
+        // ฟังก์ชันสำหรับกำหนดและโหลด Environment Config (รองรับ Build-Time Replacement)
+        function getEnvironmentConfig() {
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            // NOTE: ค่าเหล่านี้คือ Placeholder ที่จะถูกแทนที่โดย GitHub Actions Script
+            // ถ้าค่าถูกแทนที่แล้ว จะถูกใช้เป็นค่า Default ในโค้ด
+            const ENVIRONMENT_DEFAULTS = {
+                // ##DRONE_ID_PLACEHOLDER## จะถูกแทนที่ด้วยค่าจาก GitHub Environment Variable ในขั้นตอน Build
+                DRONE_ID: "##DRONE_ID_PLACEHOLDER##", 
+                // ##API_BASE_URL_PLACEHOLDER## จะถูกแทนที่ด้วยค่าจาก GitHub Environment Variable ในขั้นตอน Build
+                API_BASE_URL: "##API_BASE_URL_PLACEHOLDER##",
+                LIMIT: 12
+            };
+
+            // ตรวจสอบค่าที่ถูกแทนที่ หากยังคงเป็น Placeholder ให้ใช้ค่า Hardcoded ที่สมบูรณ์
+            const BUILT_DRONE_ID = ENVIRONMENT_DEFAULTS.DRONE_ID.startsWith('##') ? "none" : ENVIRONMENT_DEFAULTS.DRONE_ID;
+            const BUILT_API_BASE_URL = ENVIRONMENT_DEFAULTS.API_BASE_URL.startsWith('##') ? "none" : ENVIRONMENT_DEFAULTS.API_BASE_URL;
+
+            // ตรรกะ: ใช้ URL Parameter > ใช้ค่าที่ถูก Build-Time Replace > ใช้ค่า Hardcoded
+            const DRONE_ID = urlParams.get('drone_id') || BUILT_DRONE_ID; 
+            const API_BASE_URL = urlParams.get('api_base_url') || BUILT_API_BASE_URL; 
+            
+            return { 
+                DRONE_ID, 
+                API_BASE_URL, 
+                LIMIT: ENVIRONMENT_DEFAULTS.LIMIT 
+            };
+        }
+
+        const ENV = getEnvironmentConfig();
+        const DRONE_ID = ENV.DRONE_ID;
+        const API_BASE_URL = ENV.API_BASE_URL;
+        const LIMIT = ENV.LIMIT;
         
         let droneConfig = null;
-        const LIMIT = 12;
 
-        // --- 2. API Helper Functions ---
+        // --- 2. API Helper Functions (โค้ดส่วนนี้ยังคงเดิม) ---
         
         /**
          * ดึงข้อมูล Config ของ Drone
@@ -95,14 +137,19 @@
                 console.error("Client Error: LogData is invalid or incomplete.", logData);
                 throw new Error("Invalid or incomplete log data provided.");
             }
-            const queryToSend = `?drone_id=${logData.drone_id}&drone_name=${logData.drone_name}&&country=${logData.country}&celsius=${logData.celsius}`;
 
-            const url = `${API_BASE_URL}/logs${queryToSend}`;
-            // console.log(queryToSend);
+            const url = `${API_BASE_URL}/logs`;
+            const payload = JSON.stringify(logData);
+            
+            // Log ข้อมูลที่กำลังจะถูกส่งไป (ตรวจสอบใน Console)
+            console.log("POST /logs Payload:", payload);
 
             try {
                 const res = await fetch(url, {
                     method: 'POST',
+                    // ต้องระบุ Content-Type เพื่อให้ Server อ่าน Body ได้
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload, 
                 });
                 
                 // 2. ตรวจสอบ Response Status Code ที่ละเอียดขึ้น
@@ -137,14 +184,15 @@
          */
         async function fetchLogs(page = 1) {
             const offset = (page - 1) * LIMIT;
-            const url = `${API_BASE_URL}/log/${DRONE_ID}?limit=${LIMIT}&offset=${offset}&sort=created_at:desc`; 
+            // API Path: logs หรือ log? (เปลี่ยนจาก /log เป็น /logs เพื่อให้สอดคล้องกับมาตรฐาน)
+            const url = `${API_BASE_URL}/logs/${DRONE_ID}?limit=${LIMIT}&offset=${offset}&sort=created_at:desc`; 
 
             const res = await fetch(url);
             if (!res.ok) throw new Error(`API Error: ${res.status}`);
             return res.json();
         }
 
-        // --- 3. Page Rendering Functions ---
+        // --- 3. Page Rendering Functions (โค้ดส่วนนี้ยังคงเดิม) ---
 
         /**
          * Page #1: View Config
@@ -340,7 +388,7 @@
             }
         }
 
-        // --- 4. Routing Logic ---
+        // --- 4. Routing Logic (โค้ดส่วนนี้ยังคงเดิม) ---
 
         function changePage(pageName) {
             switch (pageName) {
@@ -357,6 +405,13 @@
                     renderConfigPage();
             }
         }
+        
+        // --- 5. Initialization (โค้ดส่วนนี้ยังคงเดิม) ---
+
+        function updateStatusDisplay() {
+            document.getElementById('current-drone-id').textContent = DRONE_ID;
+            document.getElementById('current-api-url').textContent = API_BASE_URL;
+        }
 
         // เริ่มต้น Application เมื่อโหลดหน้าเว็บเสร็จ
         window.onload = () => {
@@ -366,6 +421,7 @@
             link.rel = 'stylesheet';
             document.head.appendChild(link);
             
+            updateStatusDisplay(); // แสดงค่าตัวแปรที่ใช้
             changePage('config');
         };
 

@@ -1,0 +1,45 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main # หรือ branch ที่คุณใช้ Deploy
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    # ดึงค่า Environment Variables จาก Environment ที่เชื่อมโยงกับ Actions
+    env:
+      BUILD_DRONE_ID: ${{ vars.DRONE_ID }}
+      BUILD_API_BASE_URL: ${{ vars.API_BASE_URL }}
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show Environment Variables
+        run: |
+          echo "DRONE_ID from Environment: $BUILD_DRONE_ID"
+          echo "API_BASE_URL from Environment: $BUILD_API_BASE_URL"
+
+      - name: Perform Build-Time Variable Replacement
+        run: |
+          # ตรวจสอบว่ามีค่า Environment Variable อยู่หรือไม่ ก่อนดำเนินการแทนที่
+          
+          # แทนที่ DRONE_ID Placeholder
+          # sed -i 's/ข้อความที่ต้องการหา/ข้อความที่ต้องการแทนที่/g' ชื่อไฟล์
+          sed -i "s|##DRONE_ID_PLACEHOLDER##|$BUILD_DRONE_ID|g" index.html
+          
+          # แทนที่ API_BASE_URL Placeholder
+          # ใช้ | เป็น delimiter แทน / เพื่อหลีกเลี่ยงปัญหา URL มีเครื่องหมาย /
+          sed -i "s|##API_BASE_URL_PLACEHOLDER##|$BUILD_API_BASE_URL|g" index.html
+        
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./ # Directory ที่มี index.html อยู่
+          # ถ้า Deploy ไปที่ root ของ GH Pages (User Pages) ให้ตั้งค่า user_name และ user_email
+          # user_name: 'github-actions[bot]'
+          # user_email: 'github-actions[bot]@users.noreply.github.com'
