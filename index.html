@@ -137,19 +137,14 @@
                 console.error("Client Error: LogData is invalid or incomplete.", logData);
                 throw new Error("Invalid or incomplete log data provided.");
             }
+            const queryToSend = `?drone_id=${logData.drone_id}&drone_name=${logData.drone_name}&&country=${logData.country}&celsius=${logData.celsius}`;
 
-            const url = `${API_BASE_URL}/logs`;
-            const payload = JSON.stringify(logData);
-            
-            // Log ข้อมูลที่กำลังจะถูกส่งไป (ตรวจสอบใน Console)
-            console.log("POST /logs Payload:", payload);
+            const url = `${API_BASE_URL}/logs${queryToSend}`;
+            // console.log(queryToSend);
 
             try {
                 const res = await fetch(url, {
                     method: 'POST',
-                    // ต้องระบุ Content-Type เพื่อให้ Server อ่าน Body ได้
-                    headers: { 'Content-Type': 'application/json' },
-                    body: payload, 
                 });
                 
                 // 2. ตรวจสอบ Response Status Code ที่ละเอียดขึ้น
@@ -184,8 +179,7 @@
          */
         async function fetchLogs(page = 1) {
             const offset = (page - 1) * LIMIT;
-            // API Path: logs หรือ log? (เปลี่ยนจาก /log เป็น /logs เพื่อให้สอดคล้องกับมาตรฐาน)
-            const url = `${API_BASE_URL}/logs/${DRONE_ID}?limit=${LIMIT}&offset=${offset}&sort=created_at:desc`; 
+            const url = `${API_BASE_URL}/log/${DRONE_ID}?limit=${LIMIT}&offset=${offset}&sort=created_at:desc`; 
 
             const res = await fetch(url);
             if (!res.ok) throw new Error(`API Error: ${res.status}`);
